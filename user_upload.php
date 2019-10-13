@@ -30,7 +30,7 @@ function insertUsersTable($dbuser, $dbpass, $dbhost, $dbname, $data){
     try{
         $conn = new PDO("mysql:host=$dbhost;dbname=$dbname", $dbuser, $dbpass);
 
-        $SQL = "INSERT INTO users (name, surname, email) VALUES (:name, :surname, :email);";
+        $SQL = "INSERT INTO `users` (`name`, `surname`, `email`) VALUES (:name, :surname, :email);";
 
         $stmt = $conn->prepare($SQL);
         $stmt->execute($data);
@@ -42,26 +42,41 @@ function insertUsersTable($dbuser, $dbpass, $dbhost, $dbname, $data){
         die();
     }
 }
+// Function to check if the email address is already in the database.
+function emailExists($dbuser, $dbpass, $dbhost, $dbname, $email) {
+
+    try{
+        $conn = new PDO("mysql:host=$dbhost;dbname=$dbname", $dbuser, $dbpass);
+
+        $stmt = $conn->prepare("SELECT `email` FROM `users` WHERE `email`=?");
+        $stmt->execute([$email]); 
+
+        return $stmt->fetchColumn();
+    } catch (PDOException $e) {
+        echo 'Connection failed: ' . $e->getMessage()."\n"; 
+        die();
+    }
+}
 
 // Function to check if the database configs have all been passed.
-function checkDatabaseConfigs ($dbConfig){
+function checkDatabaseConfigs ($dbuser, $dbpass, $dbhost, $dbname){
     
     $errors = '';
 
-    if(!array_key_exists("u", $dbConfig)){
+    if(empty($dbuser)){
         $errors .= "Please add the MySQL username. USAGE : -u <mysqlusername>\n";
     }
 
-    if(!array_key_exists("p", $dbConfig)){
-        $errors .= "Please add the MySQL password. USAGE : -u <mysqlpassword>\n";
+    if(empty($dbpass)){
+        $errors .= "Please add the MySQL password. USAGE : -p <mysqlpassword>\n";
     }
 
-    if(!array_key_exists("h", $dbConfig)){
-        $errors .= "Please add the MySQL host. USAGE : -u <mysqlhost>\n";
+    if(empty($dbhost)){
+        $errors .= "Please add the MySQL host. USAGE : -h <mysqlhost>\n";
     }
 
-    if(!array_key_exists("d", $dbConfig)){
-        $errors .= "Please add the MySQL database. USAGE : -u <mysqldatabase>\n";
+    if(empty($dbname)){
+        $errors .= "Please add the MySQL database. USAGE : -d <mysqldatabase>\n";
     }
         
     return $errors;
@@ -86,21 +101,63 @@ function checkFile ($file){
         
     return $errors;    
 }
+// read in the CSV file 
+function readInFile($file){
+    try {
+        $delimiter = ',';
+        if (($handle = fopen($file, 'r')) !== FALSE){
 
+            // Headrow
+            $headers = fgetcsv($handle, 4096, $delimiter, '"');
+            $data = [];
+            
+            //Rows
+            $i=0;
+            while (($row = fgetcsv($handle, 4096, $delimiter)) !== FALSE){
 
-$file = getopt(null, ["file:"]);
-$dbConfig = getopt("u:p:h:d:");
+                $data[$i]['name'] = ucfirst(strtolower(trim($row[0])));
+                $data[$i]['surname'] = ucfirst(strtolower(trim($row[1])));
+                $data[$i]['email'] = strtolower(trim($row[2]));
 
-$mysqlUsername = (isset($dbConfig['u']) ? $dbConfig['u'] : '');
-$mysqlPassword = (isset($dbConfig['p']) ? $dbConfig['p'] : '');
-$mysqlHost = (isset($dbConfig['h']) ? $dbConfig['h'] : '');
-$mysqlDBName = (isset($dbConfig['d']) ? $dbConfig['d'] : '');
+                $i++;
+            }
+            fclose($handle);
+        }
+    } catch (Exception $e) {
+        echo 'Failed to read the file: ' . $e->getMessage()."\n"; 
+        die();
+    }
+
+    return $data;
+}
+
+// Check if an email address is valid
+
+function isValidEmail($email){
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+
+    return true;
+}
+
+$params = getopt("u:p:h:d:", ["file:", "dry_run", "help", "create_table"]);
+
+//print_r($params);
+//die;
+$mysqlUsername = (isset($params['u']) ? trim($params['u']) : '');
+$mysqlPassword = (isset($params['p']) ? trim($params['p']) : '');
+$mysqlHost = (isset($params['h']) ? trim($params['h']) : '');
+$mysqlDBName = (isset($params['d']) ? trim($params['d']) : '');
+
+$file = (isset($params['file']) ? $params['file'] : '');
 
 // execute this peace of code if the --help directive is passed
-if(in_array('--help', $argv)){
+if(array_key_exists('help', $params)){
 
     echo "**************************************\n";
-    echo "*               USAGE                *\n";
+    echo "*        Available options           *\n";
     echo "**************************************\n\n\n";
 
     echo "--file [csv file name] – this is the name of the CSV to be parsed\n";
@@ -116,9 +173,9 @@ if(in_array('--help', $argv)){
 }
 
 // execute this peace of code if the --create_table directive is passed
-if(in_array('--create_table', $argv)){
+if(array_key_exists('create_table', $params)){
 
-    $checkDatabaseConfigs = checkDatabaseConfigs ($dbConfig);
+    $checkDatabaseConfigs = checkDatabaseConfigs ($mysqlUsername, $mysqlPassword, $mysqlHost, $mysqlDBName);
     if(!empty($checkDatabaseConfigs)){
         echo $checkDatabaseConfigs;
         return;
@@ -129,42 +186,52 @@ if(in_array('--create_table', $argv)){
     
 }
 
-if(in_array('--dry_run', $argv)){
+if(array_key_exists('dry_run', $params)){
 
-    $checkFile = checkFile ($file['file']);
+    $checkFile = checkFile ($file);
 
     if(!empty($checkFile)){
         echo $checkFile;
         return;
     }
-    try {
-        $delimiter = ',';
-        if (($handle = fopen($file['file'], 'r')) !== FALSE){
 
-            // Headrow
-            $headers = fgetcsv($handle, 4096, ';', '"');
+    $data = readInFile($file);
 
-            //Rows
-            while (($row = fgetcsv($handle, 4096, $delimiter)) !== FALSE){
+    echo "Found data in the file ".$file."\n";
 
-                //print_r($row);
+    foreach ($data as $value) {
+        
+        echo "Name:".$value['name']." Surname:".$value['surname']." Email:".$value['email'].(!isValidEmail($value['email']) ? '. The email address is not valid' : '')."\n";
+    }
+    
+}
 
-                $name = ucfirst(strtolower(trim($row[0])));
-                $surname = ucfirst(strtolower(trim($row[1])));
-                $email = strtolower(trim($row[2]));
-                echo $name." ".$surname." ";
+if(!empty($file) && !array_key_exists('dry_run', $params)){
 
-                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    echo $email." is an invalid email format\n";
-                }else{
-                    echo $email."\n";
-                }               
+    $checkDatabaseConfigs = checkDatabaseConfigs ($mysqlUsername, $mysqlPassword, $mysqlHost, $mysqlDBName);
+    if(!empty($checkDatabaseConfigs)){
+        echo $checkDatabaseConfigs;
+        return;
+    }
+    createUsersTable($mysqlUsername, $mysqlPassword, $mysqlHost, $mysqlDBName);
 
+    $data = readInFile($file);
+    
+    foreach ($data as $value) { 
+
+        if(isValidEmail($value['email'])){
+
+            if(emailExists($mysqlUsername, $mysqlPassword, $mysqlHost, $mysqlDBName, addslashes($value['email']))){
+
+                echo "The email address ". $value['email']. " already exist in the database.\n";
+                continue;
             }
-            fclose($handle);
+            $finalData['name'] = addslashes($value['name']);
+            $finalData['surname'] = addslashes($value['surname']);
+            $finalData['email'] = addslashes($value['email']);
+            insertUsersTable($mysqlUsername, $mysqlPassword, $mysqlHost, $mysqlDBName, $finalData);
+        }else{
+            echo "Name:".$value['name']." Surname:".$value['surname']." Email:".$value['email']." This email address is not valid, so the row will not be saved.\n";
         }
-    } catch (Exception $e) {
-        echo 'Failed to read the file: ' . $e->getMessage()."\n"; 
-        die();
     }
 }
