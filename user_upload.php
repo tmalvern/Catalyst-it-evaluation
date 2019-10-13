@@ -24,8 +24,28 @@ function createUsersTable($dbuser, $dbpass, $dbhost, $dbname){
     }
 }
 
+// Function to insert into the users database table.
+function insertUsersTable($dbuser, $dbpass, $dbhost, $dbname, $data){
+
+    try{
+        $conn = new PDO("mysql:host=$dbhost;dbname=$dbname", $dbuser, $dbpass);
+
+        $SQL = "INSERT INTO users (name, surname, email) VALUES (:name, :surname, :email);";
+
+        $stmt = $conn->prepare($SQL);
+        $stmt->execute($data);
+
+        echo "The details ".$data['name']." ".$data['surname']." ".$data['email']." were entered successfully into the database.\n";
+
+    } catch (PDOException $e) {
+        echo 'Connection failed: ' . $e->getMessage()."\n"; 
+        die();
+    }
+}
+
 // Function to check if the database configs have all been passed.
 function checkDatabaseConfigs ($dbConfig){
+    
     $errors = '';
 
     if(!array_key_exists("u", $dbConfig)){
@@ -43,17 +63,33 @@ function checkDatabaseConfigs ($dbConfig){
     if(!array_key_exists("d", $dbConfig)){
         $errors .= "Please add the MySQL database. USAGE : -u <mysqldatabase>\n";
     }
-
-    if(!empty($errors)){
         
-        return $errors;
+    return $errors;
     
-    }
 }
 
-$params = getopt(null, ["file:"]);
-$dbConfig = getopt("u:p:h:d:");
+// Function to check if the csv has been passed and if it has been passed, does it exist. Also checks if the file that has been passed is a CSV.
+function checkFile ($file){
+    
+    $errors = '';
+    $fileInfo = pathinfo($file);
 
+    if(empty($file)){
+        $errors .= "Please add the file : --file <csvfile>\n";
+    }elseif(!is_readable($file)){
+
+        $errors .= "The file ".$file." does not exist or it is not readable. Please check the file\n";
+
+    }elseif($fileInfo['extension'] !== 'csv'){
+        $errors .= "Please add a csv file\n";
+    }
+        
+    return $errors;    
+}
+
+
+$file = getopt(null, ["file:"]);
+$dbConfig = getopt("u:p:h:d:");
 
 $mysqlUsername = (isset($dbConfig['u']) ? $dbConfig['u'] : '');
 $mysqlPassword = (isset($dbConfig['p']) ? $dbConfig['p'] : '');
@@ -79,7 +115,6 @@ if(in_array('--help', $argv)){
     return;
 }
 
-
 // execute this peace of code if the --create_table directive is passed
 if(in_array('--create_table', $argv)){
 
@@ -94,3 +129,42 @@ if(in_array('--create_table', $argv)){
     
 }
 
+if(in_array('--dry_run', $argv)){
+
+    $checkFile = checkFile ($file['file']);
+
+    if(!empty($checkFile)){
+        echo $checkFile;
+        return;
+    }
+    try {
+        $delimiter = ',';
+        if (($handle = fopen($file['file'], 'r')) !== FALSE){
+
+            // Headrow
+            $headers = fgetcsv($handle, 4096, ';', '"');
+
+            //Rows
+            while (($row = fgetcsv($handle, 4096, $delimiter)) !== FALSE){
+
+                //print_r($row);
+
+                $name = ucfirst(strtolower(trim($row[0])));
+                $surname = ucfirst(strtolower(trim($row[1])));
+                $email = strtolower(trim($row[2]));
+                echo $name." ".$surname." ";
+
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    echo $email." is an invalid email format\n";
+                }else{
+                    echo $email."\n";
+                }               
+
+            }
+            fclose($handle);
+        }
+    } catch (Exception $e) {
+        echo 'Failed to read the file: ' . $e->getMessage()."\n"; 
+        die();
+    }
+}
