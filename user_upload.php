@@ -154,7 +154,7 @@ $mysqlDBName = (isset($params['d']) ? trim($params['d']) : '');
 $file = (isset($params['file']) ? $params['file'] : '');
 
 // execute this peace of code if the --help directive is passed
-if(array_key_exists('help', $params)){
+if(array_key_exists('help', $params) || count($params) == 0){
 
     echo "**************************************\n";
     echo "*        Available options           *\n";
